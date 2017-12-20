@@ -3,12 +3,14 @@
 
 #include "measurement_package.h"
 #include "Eigen/Dense"
+#include "Eigen/SVD"
 #include <vector>
 #include <string>
 #include <fstream>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using Eigen::Ref;
 
 class UKF {
 public:
@@ -67,6 +69,8 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
+  unsigned long long counter_;
+
 
   /**
    * Constructor
@@ -102,6 +106,14 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+
+  void GenerateAugmentedSigmaPoints(Ref<MatrixXd> Xsig_aug);
+  void PredictSigmaPoints(const Ref<const MatrixXd> Xsig_aug, double delta_t);
+  void PredictMeanAndCovariance();
+  void PredictRadarMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref <MatrixXd> Zsig, int n_z);
+  void UpdateState(const Ref<const VectorXd> z, const Ref<const VectorXd> z_pred,
+                   const Ref<const MatrixXd> S, const Ref<const MatrixXd> Zsig, int n_z);
+  void NormalizeAngle(double *angle);
 };
 
 #endif /* UKF_H */
