@@ -57,6 +57,12 @@ public:
   ///* Radar measurement noise standard deviation radius change in m/s
   double std_radrd_ ;
 
+  ///* Measurement noise covariance matrix for radar
+  MatrixXd R_;
+
+  ///* Measurement noise covariance matrix for lidar
+  MatrixXd L_;
+
   ///* Weights of sigma points
   VectorXd weights_;
 
@@ -65,6 +71,12 @@ public:
 
   ///* Augmented state dimension
   int n_aug_;
+
+  ///* Measurement dimension, radar can measure r, phi, and r_dot
+  int n_r_;
+
+  ///* Measurement dimension, lidar can measure px and py
+  int n_l_;
 
   ///* Sigma point spreading parameter
   double lambda_;
@@ -110,9 +122,10 @@ public:
   void GenerateAugmentedSigmaPoints(Ref<MatrixXd> Xsig_aug);
   void PredictSigmaPoints(const Ref<const MatrixXd> Xsig_aug, double delta_t);
   void PredictMeanAndCovariance();
-  void PredictRadarMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref <MatrixXd> Zsig, int n_z);
+  void PredictMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref<MatrixXd> Zsig,
+                          const Ref<const MatrixXd> M_meas_noise, int n_z, bool is_radar);
   void UpdateState(const Ref<const VectorXd> z, const Ref<const VectorXd> z_pred,
-                   const Ref<const MatrixXd> S, const Ref<const MatrixXd> Zsig, int n_z);
+                   const Ref<const MatrixXd> S, const Ref<const MatrixXd> Zsig, int n_z, bool is_radar);
   void NormalizeAngle(double *angle);
 };
 
