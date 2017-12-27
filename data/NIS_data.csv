@@ -1,3 +1,6 @@
+# SENSOR_TYPE: 0 - lidar; 1 - radar
+# NIS: normalized innovation squared floating point value
+
 SENSOR_TYPE NIS
 1 74.7619
 0 0.221166

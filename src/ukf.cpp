@@ -105,8 +105,11 @@ UKF::UKF() {
     exit(1);
   }
 
-  // write column headers
-  NIS_data_file_ << "SENSOR_TYPE NIS" << std::endl;
+  // write comment and column headers
+  NIS_data_file_ << "# SENSOR_TYPE: " << MeasurementPackage::LASER << " - lidar; "
+                                      << MeasurementPackage::RADAR << " - radar\n"
+                 << "# NIS: normalized innovation squared floating point value\n\n"
+                 << "SENSOR_TYPE NIS" << std::endl;
 }
 
 /**
