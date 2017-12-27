@@ -1,5 +1,6 @@
 #include "ukf.h"
 #include <iostream>
+#include <iomanip>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -7,7 +8,6 @@ using std::vector;
 
 /**
  * Initializes Unscented Kalman filter
- * This is scaffolding, do not modify
  */
 UKF::UKF() {
   // state dimension
@@ -38,7 +38,13 @@ UKF::UKF() {
   P_ = MatrixXd(n_x_, n_x_);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 1;
+  //
+  // Based on the "Parkin, J. and Rotheram, J. (2010) Design speeds and acceleration characteristics of bicycle
+  // traffic for use in planning, design and appraisal. Transport Policy, 17 (5). pp. 335-341. ISSN 0967-070X
+  // Available from: http://eprints.uwe.ac.uk/20767" Table 1 "Summary of gradient, speed and acceleration data",
+  // the maximum acceleration is 0.71. According to the rule of thumb, the process noise standard deviation
+  // longitudinal acceleration should be a half of the maximum acceleration value, so we set it to 0.355.
+  std_a_ = 0.355;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
   std_yawdd_ = 1;
@@ -82,22 +88,32 @@ UKF::UKF() {
 
   // number of a measurement being processed
   counter_ = 0;
+
+  // instance of Tools class with is a collection of helper methods
+  tools_ = Tools();
+
+  // normalized innovation squared for lidar (set to -1 to indicate that NIS has not been measured yet)
+  NIS_l_ = -1;
+
+  // normalized innovation squared for radar (set to -1 to indicate that NIS has not been measured yet)
+  NIS_r_ = -1;
+
+  // file to write NIS values into for latter analysis
+  NIS_data_file_.open( "NIS_data.csv", ios::out );
+  if (!NIS_data_file_.is_open()) {
+    std::cerr << "failed to open NIS_data.csv file" << std::endl;
+    exit(1);
+  }
+
+  // write column headers
+  NIS_data_file_ << "SENSOR_TYPE NIS" << std::endl;
 }
 
-UKF::~UKF() = default;
-
-void UKF::NormalizeAngle(double *angle) {
-  auto times = (unsigned long long) fabs(*angle / (2.0 * M_PI));
-
-  while (*angle > M_PI) {
-    *angle -= times * 2.0 * M_PI;
-    times = 1;
-  }
-
-  while (*angle < -M_PI) {
-    *angle += times * 2.0 * M_PI;
-    times = 1;
-  }
+/**
+ * Closes opened file.
+ */
+UKF::~UKF() {
+  NIS_data_file_.close();
 }
 
 /**
@@ -105,15 +121,11 @@ void UKF::NormalizeAngle(double *angle) {
  * either radar or laser.
  */
 void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
-  if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
-    return;
-  }
-
   if (!is_initialized_) {
     // the first measurement is handled here
     double px, py, v, yaw, yawd; // these variables will be initialized in radar or lidar conditional branch
 
-    if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+    if (use_radar_ && meas_package.sensor_type_ == MeasurementPackage::RADAR) {
       // convert from polar to cartesian coordinate system
       double meas_rho     = meas_package.raw_measurements_[0];
       double meas_phi     = meas_package.raw_measurements_[1];
@@ -124,7 +136,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       yaw  = M_PI_2 - meas_phi; // phi is measured relative to Y axis while yaw is relative to X axis
       yawd = 0;                 // not enough measurements to determine
     }
-    else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+    else if (use_laser_ && meas_package.sensor_type_ == MeasurementPackage::LASER) {
       // initial state in case the first measurement comes from lidar sensor
       px   = meas_package.raw_measurements_[0];
       py   = meas_package.raw_measurements_[1];
@@ -132,8 +144,9 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       yaw  = 0; // not enough measurements to determine
       yawd = 0; // not enough measurements to determine
     } else {
-      std::cerr << "unknown sensor type of measurement; skipping initialization" << std::endl;
-      return;
+      std::cerr << "unknown sensor type of measurement or all sensors are turned off"
+                << std::endl;
+      exit(2);
     }
 
     // initial state vector
@@ -150,29 +163,45 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     double delta_t_s = (meas_package.timestamp_ - time_us_) / 1000000.0; // us -> s
 
     // the first step in the UKF processing chain (prediction)
-    Prediction(delta_t_s);
-
     // the second step in the UKF processing chain (update)
     if (use_radar_ && meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+      Prediction(delta_t_s);
       UpdateRadar(meas_package);
-    } if (use_laser_ && meas_package.sensor_type_ == MeasurementPackage::LASER){
+    } else if (use_laser_ && meas_package.sensor_type_ == MeasurementPackage::LASER) {
+      Prediction(delta_t_s);
       UpdateLidar(meas_package);
+    } else {
+      std::cerr << "unknown sensor type of measurement or all sensors are turned off"
+                << std::endl;
+      exit(3);
     }
+
+    // write normalized innovation squared value to file
+    NIS_data_file_ << meas_package.sensor_type_ << ' '
+                   << (meas_package.sensor_type_ == MeasurementPackage::LASER ? NIS_l_ : NIS_r_)
+                   << std::endl;
   }
 
-  // initialize the time at which the measurement was taken
-  time_us_ = meas_package.timestamp_;
-  ++counter_; // increase counter of processed measurements
+  // we do not want to do any updates in cases <use_laser=false, sensor=LASER> and <use_radar=false, sensor=RADAR>
+  if ( (use_radar_ && meas_package.sensor_type_ == MeasurementPackage::RADAR) ||
+       (use_laser_ && meas_package.sensor_type_ == MeasurementPackage::LASER) ) {
+    // initialize the time at which the measurement was taken
+    time_us_ = meas_package.timestamp_;
+    ++counter_; // increase counter of processed measurements
 
-  // print statistics and intermediate results
-  std::cout << "====================\n"
-            << "Measurement number = " << counter_ << "\n"
-            << "Measurement type   = " <<
-                (meas_package.sensor_type_ == MeasurementPackage::LASER ? "LASER": "RADAR") << "\n"
-            << "Time (us)          = " << time_us_ << "\n"
-            << "x                  =\n" << x_ << "\n"
-            << "P                  =\n" << P_ << "\n"
-            << "====================\n" << std::endl;
+    // print statistics and intermediate results
+    std::cout << "====================\n"
+              << "Measurement number = " << counter_ << "\n"
+              << "Measurement type   = " <<
+                  (meas_package.sensor_type_ == MeasurementPackage::LASER ? "LASER": "RADAR") << "\n"
+              << "Time (us)          = " << time_us_ << "\n"
+              << "NIS " << (meas_package.sensor_type_ == MeasurementPackage::LASER ?
+                            "lidar          = " : "radar          = ")
+                        << (meas_package.sensor_type_ == MeasurementPackage::LASER ? NIS_l_ : NIS_r_) << "\n"
+              << "x                  =\n" << x_ << "\n"
+              << "P                  =\n" << P_ << "\n"
+              << "====================\n" << std::endl;
+  }
 }
 
 /**
@@ -215,15 +244,8 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   // predict the lidar measurement and initialize z_pred, S, and Zsig
   PredictMeasurement(z_pred, S, Zsig, L_, n_l_, false);
 
-  UpdateState(z, z_pred, S, Zsig, n_l_, false);
-  /**
-  TODO:
-
-  Complete this function! Use lidar data to update the belief about the object's
-  position. Modify the state vector, x_, and covariance, P_.
-
-  You'll also need to calculate the lidar NIS.
-  */
+  // finish the update step with the update of x_ and P_
+  UpdateState(z, z_pred, S, Zsig, NIS_l_, n_l_, false);
 }
 
 /**
@@ -246,7 +268,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   // predict the radar measurement and initialize z_pred, S, and Zsig
   PredictMeasurement(z_pred, S, Zsig, R_, n_r_, true);
 
-  UpdateState(z, z_pred, S, Zsig, n_r_, true);
+  // finish the update step with the update of x_ and P_
+  UpdateState(z, z_pred, S, Zsig, NIS_r_, n_r_, true);
 }
 
 void UKF::GenerateAugmentedSigmaPoints(Ref<MatrixXd> Xsig_aug) {
@@ -350,7 +373,7 @@ void UKF::PredictMeanAndCovariance() {
     // state difference
     VectorXd x_diff = Xsig_pred_.col(i) - x_;
     //angle normalization
-    NormalizeAngle(&x_diff(3));
+    tools_.NormalizeAngle(&x_diff(3));
 
     P_ = P_ + weights_(i) * x_diff * x_diff.transpose() ;
   }
@@ -374,9 +397,9 @@ void UKF::PredictMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref<MatrixXd
       double v1 = cos(yaw)*v;
       double v2 = sin(yaw)*v;
 
-      Zsig(0, i) = sqrt(p_x * p_x + p_y * p_y);                        //r
-      Zsig(1, i) = atan2(p_y, p_x);                                 //phi
-      Zsig(2, i) = (p_x * v1 + p_y * v2) / sqrt(p_x * p_x + p_y * p_y);   //r_dot
+      Zsig(0, i) = sqrt(p_x * p_x + p_y * p_y);                            // rho
+      Zsig(1, i) = atan2(p_y, p_x);                                        // phi
+      Zsig(2, i) = (p_x * v1 + p_y * v2) / sqrt(p_x * p_x + p_y * p_y);    // rho_dot
     } else {
       // lidar
       Zsig(0,i) = p_x;
@@ -386,7 +409,7 @@ void UKF::PredictMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref<MatrixXd
 
   z_pred.fill(0.0);
   for (int i=0; i < 2 * n_aug_ + 1; i++) {
-    z_pred = z_pred + weights_(i) * Zsig.col(i);
+    z_pred += weights_(i) * Zsig.col(i);
   }
 
   S.fill(0.0);
@@ -395,7 +418,7 @@ void UKF::PredictMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref<MatrixXd
     VectorXd z_diff = Zsig.col(i) - z_pred;
     if (is_radar) {
       //angle normalization
-      NormalizeAngle(&z_diff(1));
+      tools_.NormalizeAngle(&z_diff(1));
     }
 
     S = S + weights_(i) * z_diff * z_diff.transpose();
@@ -407,7 +430,7 @@ void UKF::PredictMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref<MatrixXd
 
 void UKF::UpdateState(const Ref<const VectorXd> z, const Ref<const VectorXd> z_pred,
                       const Ref<const MatrixXd> S, const Ref<const MatrixXd> Zsig,
-                      int n_z, bool is_radar) {
+                      double &nis, int n_z, bool is_radar) {
   // cross correlation matrix
   MatrixXd Tc(n_x_, n_z);
 
@@ -419,14 +442,14 @@ void UKF::UpdateState(const Ref<const VectorXd> z, const Ref<const VectorXd> z_p
     VectorXd z_diff = Zsig.col(i) - z_pred;
     if (is_radar) {
       //angle normalization
-      NormalizeAngle(&z_diff(1));
+      tools_.NormalizeAngle(&z_diff(1));
     }
 
     // state difference
     VectorXd x_diff = Xsig_pred_.col(i) - x_;
     if (is_radar) {
       //angle normalization
-      NormalizeAngle(&x_diff(3));
+      tools_.NormalizeAngle(&x_diff(3));
     }
 
     Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
@@ -439,10 +462,13 @@ void UKF::UpdateState(const Ref<const VectorXd> z, const Ref<const VectorXd> z_p
   VectorXd z_diff = z - z_pred;
   if (is_radar) {
     //angle normalization
-    NormalizeAngle(&z_diff(1));
+    tools_.NormalizeAngle(&z_diff(1));
   }
 
   //update state mean and covariance matrix
   x_ = x_ + K * z_diff;
   P_ = P_ - K*S*K.transpose();
+
+  // update normalized innovation squared value
+  nis = z_diff.transpose() * S.inverse() * z_diff;
 }

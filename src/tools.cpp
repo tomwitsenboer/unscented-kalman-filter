@@ -40,3 +40,15 @@ VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations, const vector<
   //return the result
   return rmse;
 }
+
+void Tools::NormalizeAngle(double *angle) {
+  auto times = round( fabs( *angle / (2.0 * M_PI) ) );  // for the case when angle is very very large
+
+  if (*angle > M_PI) {
+    *angle -= times * 2.0 * M_PI;
+  }
+
+  if (*angle < -M_PI) {
+    *angle += times * 2.0 * M_PI;
+  }
+}

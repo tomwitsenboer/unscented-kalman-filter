@@ -2,6 +2,7 @@
 #define UKF_H
 
 #include "measurement_package.h"
+#include "tools.h"
 #include "Eigen/Dense"
 #include "Eigen/SVD"
 #include <vector>
@@ -83,6 +84,17 @@ public:
 
   unsigned long long counter_;
 
+  ///* Normalized innovation squared for lidar
+  double NIS_l_;
+
+  ///* Normalized innovation squared for radar
+  double NIS_r_;
+
+  ///* File to write NIS values into
+  std::ofstream NIS_data_file_;
+
+  ///* Instance of class containing useful helper methods
+  Tools tools_;
 
   /**
    * Constructor
@@ -125,8 +137,8 @@ public:
   void PredictMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref<MatrixXd> Zsig,
                           const Ref<const MatrixXd> M_meas_noise, int n_z, bool is_radar);
   void UpdateState(const Ref<const VectorXd> z, const Ref<const VectorXd> z_pred,
-                   const Ref<const MatrixXd> S, const Ref<const MatrixXd> Zsig, int n_z, bool is_radar);
-  void NormalizeAngle(double *angle);
+                   const Ref<const MatrixXd> S, const Ref<const MatrixXd> Zsig,
+                   double &nis, int n_z, bool is_radar);
 };
 
 #endif /* UKF_H */
