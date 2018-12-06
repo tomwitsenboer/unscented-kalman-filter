@@ -5,50 +5,42 @@ using Eigen::VectorXd;
 using Eigen::MatrixXd;
 using std::vector;
 
-Tools::Tools() = default;
+Tools::Tools() {}
+Tools::~Tools() {}
 
-Tools::~Tools() = default;
+// Calculate RMSE (from lecture 5_24)
+VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
+                              const vector<VectorXd> &ground_truth) {
+  
+  	VectorXd rmse(4);
+  	rmse << 0,0,0,0;
+  
+ 	// check the validity of the following inputs:
+	//  * the estimation vector size should not be zero
+	//  * the estimation vector size should equal ground truth vector size
+	
+	if(estimations.size() != ground_truth.size()
+			|| estimations.size() == 0){
+		cout << "Invalid estimation or ground_truth data" << endl;
+		return rmse;
+	}
 
-VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations, const vector<VectorXd> &ground_truth) {
-  VectorXd rmse(4);
-  rmse << 0,0,0,0;
+	//accumulate squared residuals
+	for(unsigned int i=0; i < estimations.size(); ++i){
 
-  // check the validity of the following inputs:
-  //  * the estimation vector size should not be zero
-  //  * the estimation vector size should equal ground truth vector size
-  if(estimations.size() != ground_truth.size()
-     || estimations.empty()){
-    cout << "Invalid estimation or ground_truth data" << endl;
-    return rmse;
-  }
+		VectorXd residual = estimations[i] - ground_truth[i];
 
-  //accumulate squared residuals
-  for(unsigned int i=0; i < estimations.size(); ++i){
-    VectorXd residual = estimations[i] - ground_truth[i];
+		//coefficient-wise multiplication
+		residual = residual.array()*residual.array();
+		rmse += residual;
+	}
 
-    //coefficient-wise multiplication
-    residual = residual.array()*residual.array();
-    rmse += residual;
-  }
+	//calculate the mean
+	rmse = rmse/estimations.size();
 
-  //calculate the mean
-  rmse = rmse/estimations.size();
+	//calculate the squared root
+	rmse = rmse.array().sqrt();
 
-  //calculate the squared root
-  rmse = rmse.array().sqrt();
-
-  //return the result
-  return rmse;
-}
-
-void Tools::NormalizeAngle(double *angle) {
-  auto times = round( fabs( *angle / (2.0 * M_PI) ) );  // for the case when angle is very very large
-
-  if (*angle > M_PI) {
-    *angle -= times * 2.0 * M_PI;
-  }
-
-  if (*angle < -M_PI) {
-    *angle += times * 2.0 * M_PI;
-  }
+	//return the result
+	return rmse;	                              
 }
