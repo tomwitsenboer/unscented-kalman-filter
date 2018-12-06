@@ -105,7 +105,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     }
     //set initialization:
     is_initialized_ = true;
-    cout << "hello1";
     }
   else {
     // set timestep
