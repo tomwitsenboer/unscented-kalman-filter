@@ -2,19 +2,23 @@
 #define UKF_H
 
 #include "measurement_package.h"
-#include "tools.h"
 #include "Eigen/Dense"
-#include "Eigen/SVD"
 #include <vector>
 #include <string>
 #include <fstream>
+#include "tools.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-using Eigen::Ref;
 
 class UKF {
 public:
+
+  ///* NIS RADAR
+  double NIS_RADAR_;
+  
+  ///* NIS LIDAR
+  double NIS_LIDAR_;
 
   ///* initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
@@ -33,6 +37,9 @@ public:
 
   ///* predicted sigma points matrix
   MatrixXd Xsig_pred_;
+  
+  ///* weights
+  VectorXd weights;
 
   ///* time when the state is true, in us
   long long time_us_;
@@ -58,12 +65,6 @@ public:
   ///* Radar measurement noise standard deviation radius change in m/s
   double std_radrd_ ;
 
-  ///* Measurement noise covariance matrix for radar
-  MatrixXd R_;
-
-  ///* Measurement noise covariance matrix for lidar
-  MatrixXd L_;
-
   ///* Weights of sigma points
   VectorXd weights_;
 
@@ -73,28 +74,9 @@ public:
   ///* Augmented state dimension
   int n_aug_;
 
-  ///* Measurement dimension, radar can measure r, phi, and r_dot
-  int n_r_;
-
-  ///* Measurement dimension, lidar can measure px and py
-  int n_l_;
-
   ///* Sigma point spreading parameter
   double lambda_;
 
-  unsigned long long counter_;
-
-  ///* Normalized innovation squared for lidar
-  double NIS_l_;
-
-  ///* Normalized innovation squared for radar
-  double NIS_r_;
-
-  ///* File to write NIS values into
-  std::ofstream NIS_data_file_;
-
-  ///* Instance of class containing useful helper methods
-  Tools tools_;
 
   /**
    * Constructor
@@ -130,15 +112,14 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
-
-  void GenerateAugmentedSigmaPoints(Ref<MatrixXd> Xsig_aug);
-  void PredictSigmaPoints(const Ref<const MatrixXd> Xsig_aug, double delta_t);
-  void PredictMeanAndCovariance();
-  void PredictMeasurement(Ref<VectorXd> z_pred, Ref<MatrixXd> S, Ref<MatrixXd> Zsig,
-                          const Ref<const MatrixXd> M_meas_noise, int n_z, bool is_radar);
-  void UpdateState(const Ref<const VectorXd> z, const Ref<const VectorXd> z_pred,
-                   const Ref<const MatrixXd> S, const Ref<const MatrixXd> Zsig,
-                   double &nis, int n_z, bool is_radar);
+  
+  /**
+  * Normalize angles
+  */
+  double NormalizeAngles(double angle);
+  
 };
+
+  
 
 #endif /* UKF_H */
