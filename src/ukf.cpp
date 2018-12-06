@@ -67,6 +67,8 @@ UKF::UKF() {
 
 UKF::~UKF() {}
 
+cout << "hier1";
+
 /**
  * @param {MeasurementPackage} meas_package The latest measurement data of
  * either radar or laser.
@@ -76,6 +78,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   //initialization like for EKF:
   if (!is_initialized_) {
     //initialize timestamp
+    cout << "hier2";
     time_us_ = meas_package.timestamp_;
     //initialize state(x_) and covariance matrix(P_) (from lecture 7-17 + 7-29)
     x_ << 0.0,   //ekf x   ukf px 
@@ -97,13 +100,16 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       x_(0) = rho * cos(phi);
       x_(1) = rho * sin(phi);
       x_(2) = rhodot;
+      cout << "hier3";
     }
     else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
       x_(0) = meas_package.raw_measurements_(0);
       x_(1) = meas_package.raw_measurements_(1);
+      cout << "hier4";
     }
     //set initialization:
     is_initialized_ = true;
+    cout << "hier5";
     }
   else {
     // set timestep
